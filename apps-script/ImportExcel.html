@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font: 13px/1.45 Arial, sans-serif; color: #1c1c1e; margin: 0; padding: 4px 2px; }
+  h3 { margin: 16px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: #86868b; }
+  .drop { border: 2px dashed #f0b4b4; background: #fffafa; border-radius: 12px; padding: 18px; text-align: center; }
+  .drop b { color: #c62828; }
+  .note { color: #86868b; font-size: 12px; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 7px 8px; border-bottom: 1px solid #ebebed; vertical-align: top; }
+  th { font-size: 12px; color: #86868b; font-weight: normal; }
+  select { padding: 5px; border-radius: 6px; border: 1px solid #ccc; font: inherit; }
+  label.opt { display: block; margin: 5px 0; }
+  .btns { display: flex; gap: 8px; margin-top: 14px; position: sticky; bottom: 0; background: #fff; padding: 10px 0 4px; }
+  button { font: inherit; font-weight: bold; padding: 9px 16px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+  button.primary { background: #c62828; border-color: #c62828; color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .rep { border: 1px solid #ebebed; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  .rep h4 { margin: 0 0 6px; font-size: 14px; }
+  .ok { color: #15803d; } .warn { color: #b45309; } .err { color: #c62828; }
+  .tag { display: inline-block; background: #f2f2f4; border-radius: 99px; padding: 1px 8px; margin: 2px 3px 2px 0; font-size: 12px; }
+  .tag.m { background: #eaf7ef; color: #15803d; } .tag.i { background: #fff4e5; color: #b45309; }
+  .samples { max-height: 170px; overflow: auto; margin-top: 6px; }
+  .samples td { padding: 4px 6px; font-size: 12px; }
+  .msg { padding: 10px 12px; border-radius: 8px; background: #eaf7ef; color: #15803d; font-weight: bold; margin-top: 10px; }
+  .msg.e { background: #fdecec; color: #c62828; }
+</style>
+</head>
+<body>
+  <div class="drop">
+    <input type="file" id="file" accept=".xlsx,.xls,.csv">
+    <div class="note">Chỉ những cột <b>có trong file Excel</b> và <b>trùng tên với cột trên Sheet</b> mới được cập nhật.<br>
+      Các cột khác trên Sheet giữ nguyên. Dòng được ghép theo cột <b>Mã sản phẩm</b> (hoặc “Mã”, “Mã SP”, “SKU”…).</div>
+  </div>
+
+  <div id="step2" hidden>
+    <h3>1. Worksheet trong file → cập nhật vào tab nào</h3>
+    <table id="map"></table>
+
+    <h3>2. Tuỳ chọn</h3>
+    <label class="opt"><input type="checkbox" id="addNew"> Mã chưa có trên Sheet thì <b>thêm dòng mới</b> (mặc định: bỏ qua)</label>
+    <label class="opt"><input type="checkbox" id="clearEmpty"> Ô <b>trống</b> trong Excel sẽ <b>xoá</b> ô tương ứng trên Sheet (mặc định: giữ nguyên)</label>
+    <label class="opt"><input type="checkbox" id="stampDate" checked> Đổi “Ngày cập nhật tồn kho” thành hôm nay sau khi cập nhật</label>
+
+    <h3>3. Kết quả</h3>
+    <div id="result"><div class="note">Bấm “Xem trước” để xem những gì sẽ thay đổi. Chưa có gì được ghi vào Sheet.</div></div>
+  </div>
+
+  <div class="btns">
+    <button id="preview" disabled>Xem trước</button>
+    <button id="apply" class="primary" disabled>Cập nhật vào Sheet</button>
+    <button onclick="google.script.host.close()" style="margin-left:auto">Đóng</button>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const norm = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+const pad = n => String(n).padStart(2, '0');
+let TABS = [], BOOK = [];
+
+google.script.run.withSuccessHandler(t => { TABS = t; }).getImportTabs();
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const wb = XLSX.read(new Uint8Array(reader.result), {type: 'array', cellDates: true});
+      BOOK = wb.SheetNames.map(name => {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {header: 1, defval: '', raw: true, blankrows: false})
+          .map(r => r.map(v => v instanceof Date ? `${pad(v.getDate())}/${pad(v.getMonth() + 1)}/${v.getFullYear()}` : v));
+        return {name, rows};
+      }).filter(s => s.rows.length > 1);
+      if (!BOOK.length) throw new Error('File không có dữ liệu');
+      drawMap();
+    } catch (err) { $('result').innerHTML = `<div class="msg e">Không đọc được file: ${esc(err.message)}</div>`; $('step2').hidden = false; }
+  };
+  reader.readAsArrayBuffer(f);
+});
+
+function drawMap() {
+  $('map').innerHTML = '<tr><th>Worksheet trong Excel</th><th>Số dòng</th><th>Cập nhật vào tab</th></tr>' + BOOK.map((s, i) => {
+    let guess = TABS.find(t => norm(t) === norm(s.name)) || (BOOK.length === 1 ? TABS[0] : '');
+    return `<tr><td><b>${esc(s.name)}</b></td><td>${s.rows.length - 1}</td><td><select data-i="${i}">
+      <option value="">— Bỏ qua —</option>${TABS.map(t => `<option ${t === guess ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td></tr>`;
+  }).join('');
+  $('step2').hidden = false;
+  $('preview').disabled = false;
+  $('apply').disabled = true;
+  $('result').innerHTML = '<div class="note">Bấm “Xem trước” để xem những gì sẽ thay đổi. Chưa có gì được ghi vào Sheet.</div>';
+}
+document.addEventListener('change', e => { if (e.target.matches('select, input[type=checkbox]')) $('apply').disabled = true; });
+
+function payload() {
+  return BOOK.map((s, i) => ({name: s.name, target: document.querySelector(`select[data-i="${i}"]`).value, rows: s.rows}))
+    .filter(s => s.target);
+}
+function options(apply) {
+  return {apply, addNew: $('addNew').checked, clearEmpty: $('clearEmpty').checked, stampDate: $('stampDate').checked};
+}
+
+function run(apply) {
+  const sheets = payload();
+  if (!sheets.length) { $('result').innerHTML = '<div class="msg e">Chưa chọn tab nào để cập nhật.</div>'; return; }
+  $('preview').disabled = $('apply').disabled = true;
+  $('result').innerHTML = `<div class="note">${apply ? 'Đang ghi vào Sheet…' : 'Đang so sánh…'}</div>`;
+  google.script.run
+    .withSuccessHandler(reps => {
+      draw(reps, apply);
+      $('preview').disabled = false;
+      const total = reps.reduce((n, r) => n + (r.cellsChanged || 0) + (r.added || 0), 0);
+      $('apply').disabled = apply || !total;
+    })
+    .withFailureHandler(err => {
+      $('result').innerHTML = `<div class="msg e">Lỗi: ${esc(err.message)}</div>`;
+      $('preview').disabled = false;
+    })
+    .importExcel(sheets, options(apply));
+}
+$('preview').onclick = () => run(false);
+$('apply').onclick = () => run(true);
+
+function draw(reps, applied) {
+  const total = reps.reduce((n, r) => n + (r.cellsChanged || 0) + (r.added || 0), 0);
+  $('result').innerHTML = reps.map(r => {
+    if (r.error) return `<div class="rep"><h4>${esc(r.name)} → ${esc(r.target)}</h4><div class="err">${esc(r.error)}</div></div>`;
+    const samples = r.samples.length ? `<div class="samples"><table><tr><th>Mã</th><th>Cột</th><th>Cũ</th><th>Mới</th></tr>${r.samples.map(s =>
+      `<tr><td>${esc(s.code)}</td><td>${esc(s.col)}</td><td>${esc(s.from)}</td><td><b>${esc(s.to)}</b></td></tr>`).join('')}</table></div>` : '';
+    return `<div class="rep"><h4>${esc(r.name)} → tab “${esc(r.target)}”</h4>
+      <div>Cột sẽ cập nhật: ${r.matched.map(c => `<span class="tag m">${esc(c)}</span>`).join('')}</div>
+      ${r.ignored.length ? `<div>Cột bỏ qua (không có trên Sheet): ${r.ignored.map(c => `<span class="tag i">${esc(c)}</span>`).join('')}</div>` : ''}
+      <div class="${r.cellsChanged || r.added ? 'ok' : ''}" style="margin-top:6px"><b>${r.updatedCodes}</b> mã thay đổi · <b>${r.cellsChanged}</b> ô${r.added ? ` · <b>${r.added}</b> mã mới` : ''}</div>
+      ${r.notFound.length ? `<div class="warn">${r.notFound.length} mã không có trên Sheet (bỏ qua): ${esc(r.notFound.slice(0, 20).join(', '))}${r.notFound.length > 20 ? '…' : ''}</div>` : ''}
+      ${r.duplicates.length ? `<div class="warn">Mã lặp trong file (chỉ lấy dòng đầu): ${esc(r.duplicates.join(', '))}</div>` : ''}
+      ${samples}</div>`;
+  }).join('') + (applied
+    ? `<div class="msg">✓ Đã cập nhật ${total} thay đổi vào Sheet. Website sẽ hiện dữ liệu mới ở lần tải trang kế tiếp.</div>`
+    : total ? '<div class="note">Đây mới là xem trước. Bấm “Cập nhật vào Sheet” để ghi.</div>' : '<div class="note">Không có gì thay đổi.</div>');
+}
+</script>
+</body>
+</html>
