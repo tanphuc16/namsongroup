@@ -26,6 +26,9 @@ window.DEMO_DATA = {
      "weight": 18.5,
      "stockBox": 90,
      "stockM2": 200.88,
+     "promo": "Giảm 10% khi mua từ 50 m²",
+     "promoFrom": "2026-11-20",
+     "promoTo": "2026-12-31",
      "image": "demo-img/NS001.svg",
      "images": [
       "demo-img/NS001.svg",
@@ -117,6 +120,9 @@ window.DEMO_DATA = {
      "weight": 24,
      "stockBox": 272,
      "stockM2": 753.98,
+     "promo": "Tặng nẹp kết thúc cho đơn từ 30 m²",
+     "promoFrom": "2026-11-25",
+     "promoTo": "2026-11-30",
      "image": "demo-img/NS005.svg",
      "images": [
       "demo-img/NS005.svg",
@@ -209,6 +215,8 @@ window.DEMO_DATA = {
      "weight": 17,
      "stockBox": 302,
      "stockM2": 579.84,
+     "promo": "Giảm 50.000đ/m² – xả hàng cuối năm",
+     "promoTo": "2026-12-15",
      "image": "demo-img/WP009.svg",
      "images": [
       "demo-img/WP009.svg"
@@ -304,6 +312,9 @@ window.DEMO_DATA = {
      "packing": "1 bộ/kiện",
      "weight": 42,
      "stockBox": 14,
+     "promo": "Mua bồn cầu tặng vòi xịt vệ sinh",
+     "promoFrom": "2026-12-01",
+     "promoTo": "2026-12-31",
      "image": "demo-img/TB001.svg",
      "images": [
       "demo-img/TB001.svg",
@@ -344,6 +355,9 @@ window.DEMO_DATA = {
      "packing": "1 bộ/kiện",
      "weight": 55,
      "stockBox": 17,
+     "promo": "Giảm 15% + miễn phí lắp đặt nội thành",
+     "promoFrom": "2026-11-01",
+     "promoTo": "2026-12-15",
      "image": "demo-img/TB003.svg",
      "images": [
       "demo-img/TB003.svg",
@@ -386,6 +400,9 @@ window.DEMO_DATA = {
      "packing": "1 cái/hộp",
      "weight": 15,
      "stockBox": 31,
+     "promo": "Giảm 20% (đã kết thúc)",
+     "promoFrom": "2026-10-01",
+     "promoTo": "2026-10-31",
      "image": "demo-img/TB005.svg",
      "images": [
       "demo-img/TB005.svg"
@@ -517,6 +534,7 @@ window.DEMO_DATA = {
      "packing": "10 thanh/bó",
      "weightUnit": 0.45,
      "stockBox": 11,
+     "promo": "Mua 10 thanh tặng 1 thanh",
      "image": "demo-img/PK001.svg",
      "images": [
       "demo-img/PK001.svg"

@@ -49,6 +49,29 @@ function photosOf(it) {
   return raw.map(s => String(s).trim()).filter(Boolean).slice(0, MAX_PHOTOS);
 }
 
+/* ---------- Khuyến mãi ---------- */
+// promoFrom / promoTo dạng "yyyy-MM-dd" (Apps Script đã chuẩn hoá). Hết hạn → coi như không có.
+const pad2 = n => String(n).padStart(2, '0');
+const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const dmy = iso => iso ? iso.split('-').reverse().join('/') : '';
+const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+const PROMO_ON = 'Đang khuyến mãi', PROMO_SOON = 'Sắp diễn ra';
+function promoInfo(it) {
+  if (!it.promo) return null;
+  const t = isoToday();
+  if (it.promoTo && it.promoTo < t) return null;
+  const soon = !!(it.promoFrom && it.promoFrom > t);
+  const period = it.promoFrom && it.promoTo ? `${dmy(it.promoFrom)} – ${dmy(it.promoTo)}`
+    : it.promoTo ? `Đến hết ${dmy(it.promoTo)}` : it.promoFrom ? `Từ ${dmy(it.promoFrom)}` : 'Không giới hạn thời gian';
+  let note = '';
+  if (soon) { const d = daysBetween(t, it.promoFrom); note = d === 1 ? 'Bắt đầu từ ngày mai' : `Bắt đầu sau ${d} ngày`; }
+  else if (it.promoTo) { const d = daysBetween(t, it.promoTo); note = d === 0 ? 'Kết thúc hôm nay' : d <= 7 ? `Còn ${d} ngày` : ''; }
+  return {state: soon ? 'soon' : 'on', label: soon ? PROMO_SOON : PROMO_ON, period, note, text: String(it.promo)};
+}
+// Giá trị dùng để lọc: trường thường, hoặc "_promo" (trạng thái khuyến mãi)
+const fieldVal = (it, k) => k === '_promo' ? (promoInfo(it)?.label || '') : String(it[k] ?? '').trim();
+const filtersOf = v => [['_promo', 'Khuyến mãi'], ...v.filters];
+
 /* ---------- Biểu tượng ---------- */
 const svg = (d, size = 18, sw = 1.8) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const ICON = {
@@ -61,9 +84,20 @@ const ICON = {
   calc: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h4"/>',
   photos: '<path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.2"/>',
   prev: '<path d="m15 6-6 6 6 6"/>',
+  promo: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   next: '<path d="m9 6 6 6-6 6"/>',
   noPhoto: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9M3 3l18 18"/>',
 };
+// Huy hiệu khuyến mãi trên ảnh: hình răng cưa đỏ + icon nhãn giá
+const PROMO_BADGE = (() => {
+  const pts = Array.from({length: 32}, (_, i) => {
+    const a = Math.PI * i / 16 - Math.PI / 2, r = i % 2 ? 20 : 24;
+    return `${(24 + r * Math.cos(a)).toFixed(1)},${(24 + r * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+  return `<span class="promo-badge" title="Đang khuyến mãi" aria-label="Đang khuyến mãi"><svg viewBox="0 0 48 48" width="46" height="46">
+    <polygon points="${pts}" fill="#d32f2f" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+    <g transform="translate(13 13) scale(.92)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ICON.promo}</g></svg></span>`;
+})();
 const NO_PHOTO = `<div class="no-photo">${svg(ICON.noPhoto, 28, 1.6)}<span>Chưa có ảnh</span></div>`;
 
 /* ---------- Trạng thái ---------- */
@@ -116,12 +150,16 @@ function visibleItems() {
   const v = view(sec);
   const words = normalize(S.query).split(/\s+/).filter(Boolean);
   let items = sec.items.filter(it => {
-    for (const [k] of v.filters) if (S.picked[k]?.length && !S.picked[k].includes(String(it[k] ?? ''))) return false;
+    for (const [k] of filtersOf(v)) if (S.picked[k]?.length && !S.picked[k].includes(fieldVal(it, k))) return false;
     if (!words.length) return true;
-    const hay = normalize(v.search.map(k => it[k] ?? '').join(' '));
+    const hay = normalize(v.search.map(k => it[k] ?? '').join(' ') + ' ' + (promoInfo(it)?.text || ''));
     return words.every(w => hay.includes(w));          // gõ nhiều từ: phải khớp hết, không cần dấu
   });
   const stockOf = it => toNum(it.stockM2 ?? it.stockBox);
+  if (S.sort === 'default') {                          // mặc định: hàng đang khuyến mãi lên trước, rồi sắp khuyến mãi
+    const rank = it => ({on: 0, soon: 1})[promoInfo(it)?.state] ?? 2;
+    items = items.map((it, i) => [rank(it), i, it]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2]);
+  }
   if (S.sort === 'code') items = items.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), 'vi', {numeric: true}));
   if (S.sort === 'stockDesc') items = items.slice().sort((a, b) => (stockOf(b) || -1) - (stockOf(a) || -1));
   if (S.sort === 'stockAsc') items = items.slice().sort((a, b) => (stockOf(a) ?? 1e12) - (stockOf(b) ?? 1e12));
@@ -178,12 +216,15 @@ function renderCards() {
     const photo = src
       ? `<img src="${esc(src)}" alt="${esc(it.code)}" loading="${i < 8 ? 'eager' : 'lazy'}" decoding="async" data-fallback>`
       : NO_PHOTO;
+    const pr = promoInfo(it);
     const tag = (v.badge && it[v.badge] ? `<span class="tag">${esc(it[v.badge])}</span>` : '') +
+      (pr?.state === 'on' ? PROMO_BADGE : '') +
       (photos.length > 1 ? `<span class="photo-count">${svg(ICON.photos, 13, 2)}${photos.length}</span>` : '');
     const meta = [v.line2?.(it), it.size && sizeTxt(it.size)].filter(Boolean).join(' · ');
     return `<button type="button" class="card" data-code="${esc(it.code)}">
       <div class="photo">${photo}${tag}</div>
-      <h3>${esc(it.code)}</h3><p class="meta">${esc(meta)}</p>${stockLine(sec, it)}</button>`;
+      <h3>${esc(it.code)}</h3><p class="meta">${esc(meta)}</p>
+      ${pr ? `<p class="promo-line ${pr.state}">${pr.state === 'soon' ? `Từ ${esc(dmy(it.promoFrom).slice(0, 5))}: ` : ''}${esc(pr.text)}</p>` : ''}${stockLine(sec, it)}</button>`;
   }).join('') : '<div class="empty">Không có mã nào khớp.<br><br><button class="btn" data-act="resetAll">Xoá tìm kiếm & bộ lọc</button></div>';
   wireImages(box);
 }
@@ -198,7 +239,7 @@ function wireImages(root) {
   });
 }
 
-const SORTS = [['default', 'Mặc định'], ['code', 'Theo mã'], ['stockDesc', 'Tồn nhiều nhất'], ['stockAsc', 'Tồn ít nhất']];
+const SORTS = [['default', 'Khuyến mãi trước'], ['code', 'Theo mã'], ['stockDesc', 'Tồn nhiều nhất'], ['stockAsc', 'Tồn ít nhất']];
 function renderFilters() {
   const sec = section();
   const v = view(sec);
@@ -211,11 +252,11 @@ function renderFilters() {
       <button type="button" class="fgroup-head" data-group="${key}">${title}<span class="picked">${esc(picked)}</span>${svg(ICON.chevron, 16, 2.2)}</button>
       <div class="fgroup-body">${body}</div></div>`;
 
-  const groups = v.filters.map(([k, title]) => {
+  const groups = filtersOf(v).map(([k, title]) => {
     const tally = {};
-    items.forEach(it => { const val = String(it[k] ?? '').trim(); if (val) tally[val] = (tally[val] || 0) + 1; });
-    const opts = Object.keys(tally).sort((a, b) => a.localeCompare(b, 'vi', {numeric: true}));
-    if (opts.length < 2) return '';                  // chỉ 1 lựa chọn thì lọc không có ý nghĩa
+    items.forEach(it => { const val = fieldVal(it, k); if (val) tally[val] = (tally[val] || 0) + 1; });
+    const opts = k === '_promo' ? [PROMO_ON, PROMO_SOON].filter(o => tally[o]) : Object.keys(tally).sort((a, b) => a.localeCompare(b, 'vi', {numeric: true}));
+    if (opts.length < (k === '_promo' ? 1 : 2)) return '';   // chỉ 1 lựa chọn thì lọc không có ý nghĩa (trừ khuyến mãi)
     const chosen = S.picked[k] || [];
     return group(k, title, chosen.join(', '), `<div class="chips">${opts.map(o =>
       `<button type="button" class="chip ${chosen.includes(o) ? 'on' : ''}" data-fkey="${k}" data-fval="${esc(o)}">${esc(k === 'size' ? sizeTxt(o) : o)}<small>${tally[o]}</small></button>`).join('')}</div>`);
@@ -223,6 +264,13 @@ function renderFilters() {
 
   const sortBox = group('sort', 'Sắp xếp', S.sort === 'default' ? '' : SORTS.find(s => s[0] === S.sort)[1],
     `<div class="chips">${SORTS.map(([k, t]) => `<button type="button" class="chip ${S.sort === k ? 'on' : ''}" data-sort="${k}">${t}</button>`).join('')}</div>`);
+
+  // Nút nhanh "Khuyến mãi" cạnh nút Lọc
+  const onCount = items.filter(it => promoInfo(it)?.state === 'on').length;
+  const pb = $('#promoBtn');
+  pb.hidden = !onCount;
+  pb.classList.toggle('on', !!S.picked._promo?.includes(PROMO_ON));
+  pb.innerHTML = `${svg(ICON.promo, 15, 2.2)}Khuyến mãi <small>${onCount}</small>`;
 
   $('#filterPanel').innerHTML = `<div class="filter-groups">${groups}${sortBox}</div>
     <div class="filter-foot"><button type="button" class="btn" data-act="clearFilters">Xoá tất cả</button><button type="button" class="btn primary" data-act="closeFilters">Xem ${visibleItems().length} mã</button></div>`;
@@ -261,6 +309,7 @@ function openDetail(code, {push = true} = {}) {
       <div class="detail-info">
         <h2>${esc(it.code)}</h2>
         <div class="subtitle">${esc(v.sub.map(k => it[k]).filter(Boolean).join(' · '))}</div>
+        ${promoBox(it)}
         ${kpis}
         ${calcMarkup(sec, it)}
         <h3 class="section-title">Thông tin sản phẩm</h3>
@@ -297,6 +346,15 @@ function openFromUrl() {
   if (!code || $('#backdrop').classList.contains('open')) return;
   if (p.get('tab') && S.data.sections.some(s => s.id === p.get('tab')) && p.get('tab') !== S.tab) { S.tab = p.get('tab'); render(); }
   openDetail(code, {push: false});
+}
+
+function promoBox(it) {
+  const pr = promoInfo(it);
+  if (!pr) return '';
+  return `<div class="promo-box ${pr.state}">
+    <div class="promo-head">${svg(ICON.promo, 16, 2.2)}<b>${pr.state === 'soon' ? 'Khuyến mãi sắp diễn ra' : 'Chương trình khuyến mãi'}</b>${pr.note ? `<span class="promo-note">${esc(pr.note)}</span>` : ''}</div>
+    <p class="promo-text">${esc(pr.text)}</p>
+    <div class="promo-period">Thời gian áp dụng: <b>${esc(pr.period)}</b></div></div>`;
 }
 
 /* ---------- Album ảnh trong popup ---------- */
@@ -735,6 +793,9 @@ document.addEventListener('click', e => {
   else if (d.gnav) S.galleryGo?.(S.gIndex + +d.gnav);
   else if (d.thumb) S.galleryGo?.(+d.thumb);
   else switch (d.act) {
+    case 'togglePromo':
+      S.picked._promo = S.picked._promo?.includes(PROMO_ON) ? [] : [PROMO_ON];
+      renderFilters(); renderCards(); break;
     case 'clearFilters': resetFilters(); renderFilters(); renderCards(); break;
     case 'closeFilters': setFilterPanel(false); break;
     case 'resetAll': resetFilters(); $('#search').value = ''; S.query = ''; $('.searchbox').classList.remove('filled'); renderFilters(); renderCards(); break;

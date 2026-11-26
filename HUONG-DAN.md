@@ -136,6 +136,30 @@ Thử ngay bằng file `mau-du-lieu/Vi-du-file-cap-nhat-ton-kho.xlsx`: file này
 
 Menu **Nam Sơn → Kiểm tra dữ liệu** báo số mã từng tab, mã bị trùng và mã chưa có ảnh.
 
+## Khuyến mãi
+
+Mỗi tab có 3 cột:
+
+| Cột | Ghi gì | Ví dụ |
+|---|---|---|
+| **Chương trình khuyến mãi** | Nội dung khuyến mãi (có thể xuống dòng bằng Alt+Enter) | Giảm 10% khi mua từ 50 m² |
+| **Khuyến mãi từ ngày** | Ngày bắt đầu, dạng ngày/tháng/năm. Để trống = áp dụng ngay | 01/12/2026 |
+| **Khuyến mãi đến ngày** | Ngày kết thúc (vẫn áp dụng trong ngày này). Để trống = không thời hạn | 31/12/2026 |
+
+Web tự xử lý theo ngày hôm nay, không cần ai vào xoá:
+- **Đang trong thời gian áp dụng:**
+  - Sản phẩm được **xếp lên đầu danh sách**. Kiểu sắp xếp mặc định là "Khuyến mãi trước"; trong cùng nhóm vẫn giữ thứ tự như trên Sheet.
+  - Ảnh đại diện có **huy hiệu khuyến mãi màu đỏ** (nhún nhẹ để thu hút) và viền đỏ, dưới tên có một dòng nội dung khuyến mãi.
+  - Popup chi tiết có khung **Chương trình khuyến mãi** kèm thời gian áp dụng. Khi còn 7 ngày trở xuống thì hiện "Còn X ngày".
+- **Chưa tới ngày bắt đầu:** xếp ngay sau nhóm đang khuyến mãi. Popup hiện khung cam **"Khuyến mãi sắp diễn ra"** kèm "Bắt đầu sau X ngày". Thẻ sản phẩm có dòng cam "Từ dd/mm: …".
+- **Đã qua ngày kết thúc:** tự ẩn khỏi web. Dữ liệu vẫn giữ trên Sheet để bạn xem lại.
+
+Khách tìm hàng khuyến mãi bằng nút **"Khuyến mãi"** cạnh nút Lọc, hoặc trong bảng **Lọc → Khuyến mãi** (có cả "Sắp diễn ra"). Ô tìm kiếm cũng tìm được theo nội dung khuyến mãi, ví dụ gõ "tặng".
+
+Muốn bật khuyến mãi cho nhiều mã cùng lúc, có thể dùng **Nhập / cập nhật từ Excel**. Lập file Excel gồm 4 cột *Mã sản phẩm*, *Chương trình khuyến mãi*, *Khuyến mãi từ ngày*, *Khuyến mãi đến ngày*. Script chỉ ghi 3 cột khuyến mãi, các cột khác trên Sheet giữ nguyên.
+
+Menu **Nam Sơn → Kiểm tra dữ liệu** báo số mã đang khuyến mãi, và cảnh báo mã nào ghi ngày kết thúc trước ngày bắt đầu.
+
 ---
 
 ## Tuỳ biến

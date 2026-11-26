@@ -19,6 +19,7 @@ const SECTIONS = [
       pattern: 'Kiểu lát', size: 'Kích thước (mm)', thickness: 'Độ dày tấm (mm)', layer: 'Lớp chống mài mòn (mm)',
       lock: 'Hèm khóa', water: 'Chống nước', piecesPerBox: 'Số tấm/hộp', m2PerBox: 'm²/hộp',
       weight: 'Trọng lượng hộp (kg)', stockBox: 'Tồn kho (hộp)', stockM2: 'Tồn kho (m²)',
+      promo: 'Chương trình khuyến mãi', promoFrom: 'Khuyến mãi từ ngày', promoTo: 'Khuyến mãi đến ngày',
       image: 'Ảnh', note: 'Ghi chú',
     },
   },
@@ -28,6 +29,7 @@ const SECTIONS = [
       code: 'Mã sản phẩm', type: 'Loại sản phẩm', brand: 'Nhãn hiệu', name: 'Tên / Model', color: 'Màu sắc',
       size: 'Kích thước (mm)', material: 'Chất liệu', origin: 'Xuất xứ', warranty: 'Bảo hành', unit: 'Đơn vị tính',
       packing: 'Quy cách', weight: 'Trọng lượng (kg)', stockBox: 'Tồn kho',
+      promo: 'Chương trình khuyến mãi', promoFrom: 'Khuyến mãi từ ngày', promoTo: 'Khuyến mãi đến ngày',
       image: 'Ảnh', note: 'Ghi chú',
     },
   },
@@ -36,6 +38,7 @@ const SECTIONS = [
     cols: {
       code: 'Mã sản phẩm', line: 'Dòng sản phẩm', size: 'Kích thước (mm)', unit: 'Đơn vị tính', packing: 'Quy cách',
       weightUnit: 'Trọng lượng (kg/đơn vị)', stockBox: 'Tồn kho',
+      promo: 'Chương trình khuyến mãi', promoFrom: 'Khuyến mãi từ ngày', promoTo: 'Khuyến mãi đến ngày',
       image: 'Ảnh', note: 'Ghi chú',
     },
   },
@@ -52,6 +55,16 @@ function norm_(s) {
   return String(s == null ? '' : s).trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd')
     .replace(/m²|m2/g, 'm2').replace(/\s+/g, ' ');
+}
+// Ngày → "yyyy-MM-dd". Nhận ô kiểu Ngày của Sheet, hoặc chữ "25/12/2026", "25-12-2026", "2026-12-25"
+function isoDate_(v) {
+  if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, tz_(), 'yyyy-MM-dd');
+  const s = String(v == null ? '' : v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  return '';
 }
 function normCode_(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
 function isEmpty_(v) { return v === '' || v === null || v === undefined; }
@@ -116,6 +129,7 @@ function buildData_() {
       Object.keys(pos).forEach(k => {
         let v = row[pos[k]];
         if (isEmpty_(v)) return;
+        if (k === 'promoFrom' || k === 'promoTo') { v = isoDate_(v); if (v) it[k] = v; return; }
         if (v instanceof Date) v = Utilities.formatDate(v, tz_(), 'dd/MM/yyyy');
         else if (NUMERIC.indexOf(k) >= 0) { const n = toNumber_(v); v = isNaN(n) ? String(v).trim() : n; }
         else v = typeof v === 'number' ? v : String(v).trim();
@@ -370,7 +384,12 @@ function checkData() {
     const codes = {}, dup = [];
     s.items.forEach(it => { const c = normCode_(it.code); if (codes[c]) dup.push(it.code); codes[c] = 1; });
     const noImg = s.items.filter(it => !(it.images && it.images.length)).length;
-    return '✓ ' + s.title + ': ' + s.items.length + ' mã' + (dup.length ? ' · TRÙNG MÃ: ' + dup.join(', ') : '') + (noImg ? ' · ' + noImg + ' mã chưa có ảnh' : '');
+    const today = Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd');
+    const promos = s.items.filter(it => it.promo);
+    const live = promos.filter(it => (!it.promoFrom || it.promoFrom <= today) && (!it.promoTo || it.promoTo >= today)).length;
+    const badDate = promos.filter(it => it.promoFrom && it.promoTo && it.promoTo < it.promoFrom).map(it => it.code);
+    return '✓ ' + s.title + ': ' + s.items.length + ' mã' + (dup.length ? ' · TRÙNG MÃ: ' + dup.join(', ') : '') + (noImg ? ' · ' + noImg + ' mã chưa có ảnh' : '') +
+      (promos.length ? ' · ' + live + ' mã đang khuyến mãi' : '') + (badDate.length ? ' · NGÀY KM SAI (đến ngày trước từ ngày): ' + badDate.join(', ') : '');
   });
   SpreadsheetApp.getUi().alert('Kiểm tra dữ liệu', lines.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
 }
